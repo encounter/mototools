@@ -1,0 +1,7 @@
+ota_emu/node_modules
+ota_emu/images/*
+ota_emu/out/*
+simg2img/src
+simg2img/simg2img
+applypatch/src
+appypatch/applypatch
