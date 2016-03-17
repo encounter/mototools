@@ -3,5 +3,6 @@ ota_emu/images/*
 ota_emu/out/*
 simg2img/src
 simg2img/simg2img
+simg2img/img2simg
 applypatch/src
 appypatch/applypatch

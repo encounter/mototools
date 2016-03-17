@@ -13,4 +13,4 @@ git checkout tags/$TAG
 
 cd ext4_utils
 gcc -o ../../simg2img -lz sparse_crc32.c simg2img.c
-
+gcc -o ../../img2simg -lz sparse_crc32.c img2simg.c

@@ -191,7 +191,7 @@ function mountImage(path, fsType) {
   imageMounted = true;
   log('Done!\n'.green);
   
-  fastbootCmds += 'fastboot flash ' + path.substring(1) + ' ' + paths.basename(newImagePath);
+  fastbootCmds += 'fastboot flash ' + path.substring(1) + ' ' + paths.basename(newImagePath) + '\n';
 }
 
 function cleanup() {
