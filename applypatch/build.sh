@@ -1,18 +1,16 @@
-#!/bin/sh
+#!/bin/bash -e
 BRANCH=android-5.1.1_r24
 
 if [ ! -d "src" ]; then
   mkdir -p src
   cd src
 
-  git clone https://android.googlesource.com/platform/system/core
-  cd core; git checkout -b $BRANCH $BRANCH; cd ..
-  git clone https://android.googlesource.com/platform/external/bzip2
-  cd bzip2; git checkout -b $BRANCH $BRANCH; cd ..
-  git clone https://android.googlesource.com/platform/external/zlib
-  cd zlib; git checkout -b $BRANCH $BRANCH; cd ..  
-  git clone https://android.googlesource.com/platform/bootable/recovery
-  cd recovery; git checkout -b $BRANCH $BRANCH; cd ..
+  git clone -b $BRANCH https://android.googlesource.com/platform/system/core
+  git clone -b $BRANCH https://android.googlesource.com/platform/external/bzip2
+  git clone -b $BRANCH https://android.googlesource.com/platform/external/zlib
+  patch -d zlib -p1 < ../patches/zlib.patch
+  git clone -b $BRANCH https://android.googlesource.com/platform/bootable/recovery
+  patch -d recovery -p1 < ../patches/recovery.patch
 else
   cd src
 fi
@@ -24,7 +22,7 @@ gcc -O3 -DUSE_MMAP -I.. \
        zutil.c
 ar rcs libz.a *.o
 cd ../..
-                  
+
 cd bzip2
 gcc -O3 -DUSE_MMAP \
     -c blocksort.c huffman.c crctable.c randtable.c compress.c decompress.c bzlib.c
@@ -43,5 +41,6 @@ gcc -I ../../core/include -I .. \
     ../../core/libmincrypt/libmincrypt.a \
     ../../zlib/src/libz.a \
     ../../bzip2/libbz.a
+cp applypatch ../../..
 cd ../..
 
