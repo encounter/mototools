@@ -819,7 +819,7 @@ index 9827fda..0000000
 -  return (free_now >= bytes_needed) ? 0 : -1;
 -}
 diff --git a/applypatch/imgpatch.c b/applypatch/imgpatch.c
-index 33c4487..1df0d61 100644
+index 33c4487..f136870 100644
 --- a/applypatch/imgpatch.c
 +++ b/applypatch/imgpatch.c
 @@ -17,6 +17,7 @@
@@ -830,3 +830,12 @@ index 33c4487..1df0d61 100644
  #include <stdio.h>
  #include <sys/cdefs.h>
  #include <sys/stat.h>
+@@ -36,7 +37,7 @@
+  * file, and update the SHA context with the output data as well.
+  * Return 0 on success.
+  */
+-int ApplyImagePatch(const unsigned char* old_data, ssize_t old_size __unused,
++int ApplyImagePatch(const unsigned char* old_data, ssize_t old_size,
+                     const Value* patch,
+                     SinkFn sink, void* token, SHA_CTX* ctx,
+                     const Value* bonus_data) {

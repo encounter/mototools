@@ -1,15 +1,15 @@
-#!/bin/bash -e
+#!/bin/bash -ex
 BRANCH=android-5.1.1_r24
 
 if [ ! -d "src" ]; then
   mkdir -p src
   cd src
 
-  git clone -b $BRANCH https://android.googlesource.com/platform/system/core
-  git clone -b $BRANCH https://android.googlesource.com/platform/external/bzip2
-  git clone -b $BRANCH https://android.googlesource.com/platform/external/zlib
+  git clone --depth 1 -b $BRANCH https://android.googlesource.com/platform/system/core
+  git clone --depth 1 -b $BRANCH https://android.googlesource.com/platform/external/bzip2
+  git clone --depth 1 -b $BRANCH https://android.googlesource.com/platform/external/zlib
   patch -d zlib -p1 < ../patches/zlib.patch
-  git clone -b $BRANCH https://android.googlesource.com/platform/bootable/recovery
+  git clone --depth 1 -b $BRANCH https://android.googlesource.com/platform/bootable/recovery
   patch -d recovery -p1 < ../patches/recovery.patch
 else
   cd src

@@ -2,7 +2,7 @@
 TAG="android-4.1.2_r2.1"
 
 if [ ! -d "src" ]; then
-  git clone https://android.googlesource.com/platform/system/extras src
+  git clone --depth 1 https://android.googlesource.com/platform/system/extras src
   cd src
 else
   cd src
