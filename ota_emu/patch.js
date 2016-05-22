@@ -14,6 +14,10 @@ function log(str) {
   process.stdout.write(str);
 }
 
+function loginfo(str) {
+  log(str.blue);
+}
+
 function logerr(err) {
   if (err.stack) {
     err = err.stack;
@@ -77,7 +81,7 @@ var resetSelinux = false;
 function checkSelinux() {
   var status = exec('getenforce').trim();
   if (status === 'Enforcing') {
-    log('Settings SELinux to permissive mode... '.blue);
+    loginfo('Setting SELinux to permissive mode... ');
     resetSelinux = true;
     exec('setenforce 0');
     log('Done!\n'.green);
@@ -86,7 +90,7 @@ function checkSelinux() {
 
 var walkSync = function(dir, recurse, includeDirs, filelist) {
   var files = fs.readdirSync(dir);
-  
+
   filelist = filelist || [];
   recurse = recurse || false;
   includeDirs = includeDirs || false;
@@ -106,38 +110,68 @@ var walkSync = function(dir, recurse, includeDirs, filelist) {
 
 function setMetadata(path, data, recursive) {
   var stats = fs.lstatSync(path);
+  var realpath = path, followSymlink = false;
+  if (stats.isSymbolicLink()) {
+    // We need to operate on its target, so resolve the symlink
+    var target = fs.readlinkSync(path);
+    if (target.indexOf('/') === 0) {
+      realpath = paths.join(mountDir, target);
+    } else {
+      realpath = paths.join(paths.dirname(path), target);
+    }
+    if (exists(realpath)) {
+      followSymlink = true;
+    } else {
+      logwarn('Symlink target doesn\'t exist: ' + realpath);
+    }
+  }
   if (data.hasOwnProperty('uid') && data.hasOwnProperty('gid')) {
     logdebug('Setting UID ' + data.uid + ', GID ' + data.gid + ' for ' + path);
     fs.lchownSync(path, data.uid, data.gid);
+    if (followSymlink) {
+      fs.chownSync(realpath, data.uid, data.gid);
+    }
   }
-  if (stats.isDirectory()) {
-    if (data.hasOwnProperty('dmode')) {
-      logdebug('Setting dmode ' + data.dmode.oct + ' for ' + path);
-      fs.lchmodSync(path, data.dmode.oct);
-    } else if (data.hasOwnProperty('mode')) {
-      logdebug('Setting mode ' + data.mode.oct + ' for ' + path);
-      fs.lchmodSync(path, data.mode.oct);    
-    }
-    if (recursive) {
-      walkSync(path, false, true).forEach(function (file) {
-        setMetadata(file, data, recursive);
-      });
-    }
-  } else {
-    if (data.hasOwnProperty('fmode')) {
-      logdebug('Setting fmode ' + data.dmode.oct + ' for ' + path);
-      fs.lchmodSync(path, data.fmode.oct);
-    } else if (data.hasOwnProperty('mode')) {
-      logdebug('Setting mode ' + data.mode.oct + ' for ' + path);
-      fs.lchmodSync(path, data.mode.oct);
+  // Linux does not have lchmod, so we have to make sure the target exists
+  if (!stats.isSymbolicLink() || followSymlink) {
+    if (stats.isDirectory()) {
+        if (data.hasOwnProperty('dmode')) {
+          logdebug('Setting dmode ' + data.dmode.oct + ' for ' + realpath);
+          fs.chmodSync(realpath, data.dmode.oct);
+        } else if (data.hasOwnProperty('mode')) {
+          logdebug('Setting mode ' + data.mode.oct + ' for ' + realpath);
+          fs.chmodSync(realpath, data.mode.oct);
+        }
+        if (recursive) {
+          walkSync(path, false, true).forEach(function (file) {
+            setMetadata(file, data, recursive);
+          });
+        }
+    } else {
+      if (data.hasOwnProperty('fmode')) {
+        logdebug('Setting fmode ' + data.dmode.oct + ' for ' + realpath);
+        fs.chmodSync(realpath, data.fmode.oct);
+      } else if (data.hasOwnProperty('mode')) {
+        logdebug('Setting mode ' + data.mode.oct + ' for ' + realpath);
+        fs.chmodSync(realpath, data.mode.oct);
+      }
     }
   }
   if (data.hasOwnProperty('selabel')) {
     logdebug('Setting selabel ' + data.selabel + ' for ' + path);
     setSeContext(path, data.selabel);
+    if (followSymlink) {
+      setSeContext(realpath, data.selabel);
+    }
     var newLabel = getSeContext(path);
     if (data.selabel !== newLabel) {
       throw 'Failed to set SELinux context for ' + path + '. Expected: ' + data.label + ', got: ' + newLabel;
+    }
+    if (followSymlink) {
+      newlabel = getSeContext(realpath);
+      if (data.selabel !== newLabel) {
+        throw 'Failed to set SELinux context for ' + realpath + '. Expected: ' + data.label + ', got: ' + newLabel;
+      }
     }
   }
 }
@@ -166,6 +200,10 @@ var fastbootCmds = '';
 var folderCreated = false;
 var imageMounted = false;
 
+var tmpMountDir = paths.join(mountDir, 'tmp');
+fs.ensureDirSync(tmpMountDir);
+spawn('mount', ['--bind', tmpDir, tmpMountDir]);
+
 function getImagePath(dir, mountPath) {
   var imageName = paths.basename(mountPath);
   return paths.join(dir, imageName) + '.img';
@@ -186,16 +224,17 @@ function mountImage(path, fsType) {
   // TODO check already mounted?
   fs.ensureDirSync(mountPath);
 
-  log(('Mounting image ' + newImagePath + '... ').blue);
+  loginfo('Mounting image ' + newImagePath + '... ');
   exec('mount', ['-o', 'loop', '-t', fsType || 'ext4', newImagePath, mountPath]);
   imageMounted = true;
   log('Done!\n'.green);
-  
+
   fastbootCmds += 'fastboot flash ' + path.substring(1) + ' ' + paths.basename(newImagePath) + '\n';
 }
 
 function cleanup() {
-  log('\nCleaning up... '.blue);
+  loginfo('\nCleaning up... ');
+  exec('sync');
   if (imageMounted) {
     exec('umount', [mountDir + '/*']);
   }
@@ -213,19 +252,19 @@ function cleanup() {
 }
 
 function copyFile(fromFile, toFile) {
-  log('Copying image... '.blue);
+  loginfo('Copying image... ');
   fs.copySync(fromFile, toFile);
   log('Done!\n'.green);
 }
 
 function parseScript() {
   var deferred = q.defer();
-  log('Parsing script... '.blue);
+  loginfo('Parsing script... ');
   otaZip.readAsTextAsync('META-INF/com/google/android/updater-script', function (str) {
     if (!str) {
       deferred.reject('Failed to read updater-script.');
     }
-    try { 
+    try {
       var ret = parser.parse(str);
     } catch (e) {
       logerr('Parsing error at ' + JSON.stringify(e.location));
@@ -240,7 +279,7 @@ function parseScript() {
 
 function execScript(parsed) {
   checkSelinux();
-  log('Executing script...\n\n'.blue);
+  loginfo('Executing script...\n\n');
   parsed.forEach(parseExpr);
   log('\nDone! '.green + 'Run the following commands to flash:\n\n' + fastbootCmds + '\n');
 }
@@ -282,22 +321,12 @@ function getProp(prop) {
 function extractFile(file, toPath, keepPath) {
   var path = paths.dirname(toPath);
   var filename = paths.basename(toPath);
-  // todododo TODO
+  // TODO extract to specific path/file
   otaZip.extractEntryTo(file, toPath, keepPath, true);
 }
 
-function move(from, to) {
-  var done = false, error;
-  fs.move(from, to, function (err) {
-    error = err;
-    done = true;
-  });
-  require('deasync').loopWhile(function () {
-    return !done;
-  });
-  if (error) {
-    throw error;
-  }
+function mountJoin(file) {
+  return paths.join(mountDir, file);
 }
 
 function runMethod(method) {
@@ -326,22 +355,23 @@ function runMethod(method) {
         throw msg;
       }
     case 'assert':
-      var assertion = method.args[0];
-      try {
-        var ret = parseExpr(assertion);
-        if (typeof ret !== 'undefined' && ret) {
-          return true;
+      return method.args.every(function (assertion) {
+        try {
+          var ret = parseExpr(assertion);
+          if (typeof ret !== 'undefined' && ret) {
+            return true;
+          }
+        } catch (e) {
+          logerr(e);
         }
-      } catch (e) {
-        logerr(e);
-      }
-      var msg = 'Assertion failed: ' + assertion.raw;
-      if (argv.force) {
-        logwarn(msg);
-        return true;
-      } else {
-        throw msg;
-      }
+        var msg = 'Assertion failed: ' + assertion.raw;
+        if (argv.force) {
+          logwarn(msg);
+          return true;
+        } else {
+          throw msg;
+        }
+      });
     case 'apply_patch_check':
       var args = parseArgs();
       var path = args[0];
@@ -378,8 +408,7 @@ function runMethod(method) {
       logdebug('Extracting ' + path + '...');
       otaZip.extractEntryTo(path, tmpDir, true, true);
       var extracted = paths.join(tmpDir, path);
-      fs.accessSync(extracted);
-      return extracted;
+      return exists(extracted) && extracted;
     case 'package_extract_dir':
       var args = parseArgs();
       var dir = args[0];
@@ -410,7 +439,7 @@ function runMethod(method) {
         args[3],
         args[4].hex + ':' + args[5]
       ];
-      logdebug(spawnArgs.join(' '));
+      logdebug('Patching ' + path);
       var ret = spawn('applypatch', spawnArgs);
       if (ret.status !== 0) {
         logwarn(ret.stdout.toString());
@@ -419,9 +448,9 @@ function runMethod(method) {
       return ret.status === 0;
     case 'delete':
     case 'delete_recursive':
-      parseArgs().map(function (file) {
-        return paths.join(mountDir, file);
-      }).forEach(fs.removeSync);
+      parseArgs()
+          .map(mountJoin)
+          .forEach(fs.removeSync);
       return true;
     case 'set_metadata':
       parseMetadata(parseArgs(), false);
@@ -431,11 +460,14 @@ function runMethod(method) {
       return true;
     case 'format':
       var args = parseArgs();
-      fastbootCmds += 'fastboot erase ' + paths.basename(args[2]);
+      // TODO support format FS?
+      fastbootCmds += 'fastboot erase ' + paths.basename(args[2]) + '\n';
       return true;
     case 'unmount':
-      exec('umount', [paths.join(mountDir, parseArgs()[0])]);
-      return true;
+      var partition = parseArgs()[0];
+      logdebug('Unmounting ' + partition)
+      exec('sync');
+      return spawn('umount', [paths.join(mountDir, partition)]).status === 0;
     case 'sha1_check':
       var args = parseArgs();
       return exists(args[0]) && hashFile(args[0]) === args[1];
@@ -446,23 +478,40 @@ function runMethod(method) {
       var from = paths.join(mountDir, args[0]);
       var to = paths.join(mountDir, args[1]);
       logdebug('Renaming from ' + from + ' to ' + to);
-      move(from, to);
+      fs.ensureDirSync(paths.dirname(to));
+      fs.renameSync(from, to);
       return true;
     case 'symlink':
       var args = parseArgs();
       var target = args[0];
-      args.slice(1, args.length).map(function (path) {
-        return paths.join(mountDir, path);
-      }).forEach(function (path) {
-        logdebug('Symlinking from ' + path + ' to ' + target);
-        spawn('ln', ['-s', target, path]);
-      });
+      args.slice(1, args.length)
+          .map(mountJoin)
+          .forEach(function (path) {
+            logdebug('Symlinking from ' + path + ' to ' + target);
+            fs.symlinkSync(target, path);
+          });
       return true;
     case 'set_backup_flag':
       // no-op
       return true;
+    case 'apply_raw_image':
+      var args = parseArgs();
+      var filename = paths.basename(args[0]);
+      copyFile(paths.join(mountDir, args[0]), paths.join(newImageDir, filename));
+      fastbootCmds += 'fastboot flash ' + args[1] + ' ' + filename + '\n';
+      return true;
+    case 'motorola.update_gpt':
+      var args = parseArgs();
+      var filename = paths.basename(args[0]);
+      copyFile(paths.join(mountDir, args[0]), paths.join(newImageDir, filename));
+      fastbootCmds += 'fastboot flash gpt ' + filename + '\n';
+      return true;
     default:
-      logwarn('Skipping unknown function ' + method.name);
+      if (argv.force) {
+        logwarn('Skipping unknown function ' + method.name);
+      } else {
+        throw 'Unknown function ' + method.name;
+      }
   }
 }
 
