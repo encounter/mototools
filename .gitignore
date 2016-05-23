@@ -1,9 +1,11 @@
 ota_emu/node_modules
 ota_emu/images/*
 ota_emu/out/*
-simg2img/src
-simg2img/simg2img
-simg2img/img2simg
-simg2img/ext2simg
+libsparse/lib
+libsparse/src
+libsparse/out
+ext4_utils/lib
+ext4_utils/src
+ext4_utils/out
 applypatch/src
 applypatch/applypatch
